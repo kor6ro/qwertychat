@@ -1,9 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, setLogLevel } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 
-// Konfigurasi Firebase Anda dari file .env.local
-// Vite akan otomatis memuat variabel ini
+// Konfigurasi ini diambil dari file .env.local yang sudah kamu buat
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -18,7 +17,5 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Aktifkan logging untuk development
-setLogLevel('debug');
-
 export { db, auth };
+
