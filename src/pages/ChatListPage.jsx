@@ -1,145 +1,242 @@
+// src/pages/ChatListPage.jsx
+
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Bell } from 'lucide-react';
+import { Search, Plus } from 'lucide-react'; // Ganti Bell dengan Plus
 import BottomNav from '../components/BottomNav';
+import TopBarMenu from '../components/TopBarMenu'; // IMPORT MENU BARU
 import { db, auth } from '../firebaseConfig';
 import { 
   collection, 
   query, 
   onSnapshot, 
   doc, 
-  getDoc, 
-  setDoc,
-  serverTimestamp 
+  getDoc,
+  where,
+  orderBy
 } from 'firebase/firestore';
 
 export default function ChatListPage() {
-  const [usersList, setUsersList] = useState([]); // Ganti nama state
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('personal'); // State untuk tab
+  const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
   const currentUser = auth.currentUser;
 
-  // Mengambil daftar SEMUA user, kecuali diri sendiri
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const q = query(collection(db, 'users'));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const users = [];
-      querySnapshot.forEach((doc) => {
-        if (doc.id !== currentUser.uid) { // Jangan tampilkan diri sendiri
-          users.push({ id: doc.id, ...doc.data() });
-        }
-      });
-      setUsersList(users);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [currentUser]);
-
-  // === INI BAGIAN PALING PENTING ===
-  // Fungsi untuk membuat/mengambil chat room bersama
-  const handleSelectChat = async (otherUser) => {
-    if (!currentUser) return;
-
-    // 1. Buat ID chat yang unik & konsisten
-    const myId = currentUser.uid;
-    const otherId = otherUser.id;
-    const combinedId = myId > otherId ? `${myId}_${otherId}` : `${otherId}_${myId}`;
-
-    try {
-      // 2. Cek apakah dokumen chat ini sudah ada
-      const chatDocRef = doc(db, 'chats', combinedId);
-      const chatDocSnap = await getDoc(chatDocRef);
-
-      if (!chatDocSnap.exists()) {
-        // 3. Jika belum ada, buat dokumen chat baru
-        await setDoc(chatDocRef, {
-          members: [myId, otherId], // Simpan siapa saja anggotanya
-          createdAt: serverTimestamp(),
-          lastMessage: null, // Belum ada pesan
-        });
-        console.log("Dokumen chat baru dibuat:", combinedId);
-      } else {
-        console.log("Masuk ke chat yang sudah ada:", combinedId);
-      }
-      
-      // 4. Arahkan pengguna ke room chat bersama
-      navigate(`/chat/${combinedId}`);
-
-    } catch (error) {
-      console.error("Error membuat/mengambil chat:", error);
-    }
-  };
-
   return (
     <div className="h-screen flex flex-col bg-gray-50">
-      {/* Header (Salin dari kode statis Anda) */}
+      {/* Header (Diganti ikonnya) */}
       <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white p-4 shadow-lg sticky top-0">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold">Chats</h1>
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/search')} className="hover:bg-white/20 p-2 rounded-full transition">
-              <Search className="w-5 h-5" />
+          <div className="flex items-center gap-1">
+            {/* Tombol Plus untuk chat/grup baru */}
+            <button 
+              onClick={() => navigate('/search')} // Arahkan ke halaman search untuk "Add"
+              className="hover:bg-white/20 p-2 rounded-full transition"
+            >
+              <Plus className="w-5 h-5" />
             </button>
-            <button className="hover:bg-white/20 p-2 rounded-full transition">
-              <Bell className="w-5 h-5" />
-            </button>
+            {/* Ganti Bell dengan Menu Tiga Titik */}
+            <TopBarMenu />
           </div>
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
             type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Cari chat..."
             className="w-full pl-10 pr-4 py-2 rounded-full bg-white/20 backdrop-blur-sm text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-white/50"
           />
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b bg-white sticky top-[120px]"> {/* Sesuaikan sticky top jika perlu */}
-        <button className="flex-1 py-3 font-semibold text-blue-500 border-b-2 border-blue-500 transition">
+      {/* Tabs (Grup sekarang di sini) */}
+      <div className="flex border-b bg-white sticky top-[120px] z-10">
+        <button 
+          onClick={() => setActiveTab('personal')}
+          className={`flex-1 py-3 font-semibold transition ${
+            activeTab === 'personal'
+              ? 'text-blue-500 border-b-2 border-blue-500'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
           Personal
         </button>
         <button
-          onClick={() => navigate('/groups')}
-          className="flex-1 py-3 font-semibold text-gray-500 hover:text-gray-700 transition"
+          onClick={() => setActiveTab('grup')}
+          className={`flex-1 py-3 font-semibold transition ${
+            activeTab === 'grup'
+              ? 'text-blue-500 border-b-2 border-blue-500' // Samakan stylenya
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
         >
           Grup
         </button>
       </div>
 
-      {/* Chat List (Dinamis) */}
+      {/* Konten List (Dinamis berdasarkan tab) */}
       <div className="flex-1 overflow-y-auto bg-white">
-        {loading ? (
-          <p className="p-4 text-center text-gray-500">Memuat...</p>
+        {activeTab === 'personal' ? (
+          <PersonalChatList currentUser={currentUser} searchQuery={searchQuery} />
         ) : (
-          usersList.map(user => (
-            <div
-              key={user.id}
-              onClick={() => handleSelectChat(user)} // Panggil fungsi baru
-              className="flex items-center gap-3 p-4 border-b hover:bg-gray-50 cursor-pointer transition-colors"
-            >
-              <div className="relative">
-                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-400 to-purple-400 flex items-center justify-center text-2xl shadow-md">
-                  {user.displayName?.charAt(0).toUpperCase() || user.email.charAt(0).toUpperCase()}
-                </div>
-                {/* TODO: Tambahkan logic status online */}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-baseline">
-                  <h3 className="font-semibold text-gray-800 truncate">{user.displayName || user.email}</h3>
-                </div>
-                <p className="text-sm text-gray-600 truncate">{user.email}</p>
-              </div>
-            </div>
-          ))
+          <GroupChatList currentUser={currentUser} searchQuery={searchQuery} />
         )}
       </div>
 
       <BottomNav />
+    </div>
+  );
+}
+
+
+// ===================================================================
+// KOMPONEN BARU UNTUK LIST CHAT PERSONAL (LOGIKA BARU)
+// ===================================================================
+function PersonalChatList({ currentUser, searchQuery }) {
+  const [chats, setChats] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Query ke koleksi 'chats' yang melibatkan user ini
+    const q = query(
+      collection(db, 'chats'), 
+      where('members', 'array-contains', currentUser.uid),
+      orderBy('lastMessageAt', 'desc') // Urutkan berdasarkan pesan terakhir
+    );
+
+    const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+      const chatsPromises = querySnapshot.docs.map(async (docSnap) => {
+        const chatData = docSnap.data();
+        const chatId = docSnap.id;
+
+        // 1. Cari ID user lawan bicara
+        const otherUserId = chatData.members.find(uid => uid !== currentUser.uid);
+        if (!otherUserId) return null; // Skip jika ini chat aneh (misal: self-chat)
+
+        // 2. Ambil profil lawan bicara
+        const userDocRef = doc(db, 'users', otherUserId);
+        const userDocSnap = await getDoc(userDocRef);
+        const userData = userDocSnap.data();
+        
+        return {
+          id: chatId,
+          ...chatData,
+          otherUser: {
+            id: otherUserId,
+            name: userData?.displayName || userData?.email,
+            avatar: userData?.displayName?.charAt(0) || userData?.email.charAt(0)
+          }
+        };
+      });
+
+      const chatsList = (await Promise.all(chatsPromises)).filter(Boolean); // Filter null
+      setChats(chatsList);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // Filter list berdasarkan searchQuery
+  const filteredChats = chats.filter(chat => 
+    chat.otherUser.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (loading) return <p className="p-4 text-center text-gray-500">Memuat chat...</p>;
+  if (filteredChats.length === 0) return <p className="p-4 text-center text-gray-500">Belum ada chat personal.</p>;
+
+  return (
+    <div>
+      {filteredChats.map(chat => (
+        <div
+          key={chat.id}
+          onClick={() => navigate(`/chat/${chat.id}`)} // Navigasi ke chat room
+          className="flex items-center gap-3 p-4 border-b hover:bg-gray-50 cursor-pointer transition-colors"
+        >
+          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-400 to-purple-400 flex items-center justify-center text-2xl shadow-md">
+            {chat.otherUser.avatar.toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex justify-between items-baseline">
+              <h3 className="font-semibold text-gray-800 truncate">{chat.otherUser.name}</h3>
+              <span className="text-xs text-gray-500">
+                {chat.lastMessageAt?.toDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+            <p className="text-sm text-gray-600 truncate">{chat.lastMessage || "..."}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+// ===================================================================
+// KOMPONEN BARU UNTUK LIST GRUP (LOGIKA DARI GROUP LIST PAGE)
+// ===================================================================
+function GroupChatList({ currentUser, searchQuery }) {
+  const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    // Query ke koleksi 'groups' yang melibatkan user ini
+    const q = query(
+      collection(db, 'groups'),
+      where('members', 'array-contains', currentUser.uid),
+      orderBy('lastMessageAt', 'desc') // Urutkan
+    );
+    
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const groupsList = [];
+      querySnapshot.forEach((doc) => {
+        groupsList.push({ id: doc.id, ...doc.data() });
+      });
+      setGroups(groupsList);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // Filter list berdasarkan searchQuery
+  const filteredGroups = groups.filter(group => 
+    group.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (loading) return <p className="p-4 text-center text-gray-500">Memuat grup...</p>;
+  if (filteredGroups.length === 0) return <p className="p-4 text-center text-gray-500">Kamu belum bergabung dengan grup apapun.</p>;
+
+  return (
+    <div>
+      {filteredGroups.map(group => (
+        <div
+          key={group.id}
+          onClick={() => navigate(`/groups/${group.id}`)} // Navigasi ke chat grup
+          className="flex items-center gap-3 p-4 border-b hover:bg-gray-50 cursor-pointer transition-colors"
+        >
+          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-2xl shadow-md">
+            {group.avatar || group.name[0].toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex justify-between items-baseline">
+              <h3 className="font-semibold text-gray-800 truncate">{group.name}</h3>
+              <span className="text-xs text-gray-500">
+                {group.lastMessageAt?.toDate().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
+            <p className="text-sm text-gray-600 truncate">{group.lastMessage || "..."}</p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
